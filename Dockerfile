@@ -66,6 +66,5 @@ RUN mkdir -p output
 # Expose port (untuk API nanti)
 EXPOSE 8080
 
-# Command default (nanti diganti dengan perintah menjalankan server API)
-# Untuk test sekarang, kita gunakan cli help
-CMD ["python", "cli.py", "--help"]
+# Command default: Jalankan API Web Service
+CMD ["uvicorn", "src.cloud.api:app", "--host", "0.0.0.0", "--port", "8080"]

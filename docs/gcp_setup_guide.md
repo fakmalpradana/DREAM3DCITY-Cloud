@@ -94,8 +94,18 @@ Untuk endpoints `/reconstruct` dan `/obj2gml` yang butuh banyak file:
   2. Kirim path GCS `gs://bucket/input.zip` ke API.
   3. API akan mendownload dan `unzip` di dalam container sebelum memproses.
 
-### 2. Job Status & Logs
-Endpoint `GET /jobs/{job_id}` didesain untuk frontend polling (misal tiap 5 detik).
+#### 1.1 Logika Deteksi File Otomatis (Smart Detection)
+Agar program tidak bingung membedakan input (karena ada banyak file dalam ZIP), sistem akan menggunakan **Deteksi Ekstensi**:
+
+- **Untuk Reconstruct**:
+  - Sistem men-scan folder hasil unzip.
+  - File dengan akhiran `.gpkg` atau `.shp` $\rightarrow$ Dianggap sebagai **Footprint**.
+  - File dengan akhiran `.las` atau `.laz` $\rightarrow$ Dianggap sebagai **Point Cloud**.
+  - *Validasi*: Jika sistem menemukan lebih dari 1 file sejenis (misal ada 2 file `.las`), sistem akan menolak dan meminta user memisahkan input.
+
+- **Untuk Obj2GML**:
+  - Sistem men-scan seluruh file `.obj`, `.txt`, dan `.geojson` dalam folder.
+  - Semua file tersebut akan diproses sesuai hirarki folder yang ada dalam ZIP.
 
 **Response JSON Structure:**
 ```json
