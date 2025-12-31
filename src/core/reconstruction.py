@@ -1,5 +1,6 @@
 import os
 import subprocess
+import shutil
 import logging
 from typing import Dict, Optional, List
 
@@ -13,7 +14,16 @@ class ReconstructionManager:
 
     def __init__(self, config_dir: str = "src/config"):
         self.config_dir = config_dir
-        self.geof_cmd = "geof" # Assumption: geof is in PATH
+        self.config_dir = config_dir
+        # Try to find geof
+        self.geof_cmd = os.getenv("GEOF_PATH", "geof")
+        if not shutil.which(self.geof_cmd):
+            # Fallback for common local installs
+            local_bin = os.path.abspath("geof")
+            if os.path.exists(local_bin):
+                self.geof_cmd = local_bin
+            else:
+                 logger.warning(f"'geof' command not found in PATH or local directory. Ensure Geoflow is installed.")
 
     def validate_inputs(self, footprint: str, pointcloud: str, output_dir: str) -> bool:
         """Validates that input files and output directory exist."""

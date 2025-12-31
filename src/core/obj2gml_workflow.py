@@ -100,6 +100,10 @@ class RunObj2GML:
                 self.log_with_timestamp(f"Log file: {log_path}")
                 self.log_with_timestamp(f"Found {len(file_set)} file sets to process", is_display=True)
                 
+                if not file_set:
+                     self.log_with_timestamp("No file sets found to process.", is_display=True)
+                     return
+                
                 for i, file_data in enumerate(file_set):
                     self.log_with_timestamp(f"--- Processing file set {i+1}/{len(file_set)} ---", is_display=True)
                     
@@ -206,7 +210,8 @@ class RunObj2GML:
                 self.log_with_timestamp("=== PROCESSING COMPLETED ===", is_display=True)
                 self.log_with_timestamp(f"Total duration: {end:.2f} seconds", is_display=True)
                 self.log_with_timestamp(f"Processed {len(file_set)} file sets")
-                self.log_with_timestamp(f"Average time per file set: {end/len(file_set):.2f} seconds", is_display=True)
+                if len(file_set) > 0:
+                    self.log_with_timestamp(f"Average time per file set: {end/len(file_set):.2f} seconds", is_display=True)
                 self.log_with_timestamp(f"📝 Detailed logs with timestamps saved to '{log_path}'", is_display=True)
 
             # Close progress bar
