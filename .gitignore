@@ -4,3 +4,5 @@ test/
 .venv/
 geoflow-bundle/
 LAStools/
+Geoflow/
+Geoflow-2024.03.08-win64.exe

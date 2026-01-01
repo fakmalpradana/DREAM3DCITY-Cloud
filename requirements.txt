@@ -16,8 +16,8 @@ numpy<2.0.0
 packaging
 platformdirs
 pluggy
-pyproj==3.2.1
-rasterio<1.3
+pyproj
+rasterio
 requests
 shapely<2.0
 tqdm

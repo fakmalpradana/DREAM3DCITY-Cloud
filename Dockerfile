@@ -1,55 +1,51 @@
-# Menggunakan versi 3.9-slim-bullseye (Debian 11) untuk kompatibilitas C++ (CGAL 5.2) dan Python Legacy (Rasterio 1.2)
-FROM python:3.11
+FROM mambaorg/micromamba:1.5.3
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    DEBIAN_FRONTEND=noninteractive
-
-# Update apt and install ALL system dependencies first
-# This ensures gdal-config, cmake, etc. are available for both pip and geoflow build
+# Switch to root to install system build tools
+USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    git \
     build-essential \
-    cmake \
-    libboost-all-dev \
-    libgdal-dev \
-    libgeos-dev \
-    libproj-dev \
-    proj-bin \
-    libcgal-dev \
-    libeigen3-dev \
-    nlohmann-json3-dev \
+    git \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Set PROJ_DIR to help pyproj find the installed library
-ENV PROJ_DIR=/usr
+# Switch back to mamba user
+USER $MAMBA_USER
 
-# Install Go (versi terbaru stabil)
-ENV GO_VERSION=1.21.6
-RUN curl -OL https://golang.org/dl/go${GO_VERSION}.linux-amd64.tar.gz && \
-    tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz && \
-    rm go${GO_VERSION}.linux-amd64.tar.gz
+# Install Core dependencies via Conda
+# We install python, compilers, and the heavy C++ libs here
+RUN micromamba install -y -n base -c conda-forge \
+    python=3.10 \
+    gdal \
+    proj \
+    cgal-cpp \
+    eigen \
+    boost-cpp \
+    cmake \
+    make \
+    go \
+    pip \
+    numpy \
+    cython \
+    nlohmann_json \
+    shapely \
+    geos \
+    fiona \
+    pyproj \
+    rasterio \
+    && micromamba clean --all --yes
 
-# Add Go to PATH
-ENV PATH=$PATH:/usr/local/go/bin
+# Activate the environment
+ENV LD_LIBRARY_PATH="/opt/conda/lib:/usr/local/lib:$LD_LIBRARY_PATH" \
+    LIBRARY_PATH="/opt/conda/lib:/usr/local/lib:$LIBRARY_PATH" \
+    CPATH="/opt/conda/include:/usr/local/include:$CPATH" \
+    PATH="/opt/conda/bin:$PATH"
 
-# Set Working Directory
+# Switch to root for build/install steps (needs access to /usr/local)
+USER root
+
 WORKDIR /app
 
-# Copy Requirements first (caching layer)
-COPY requirements.txt .
-
-# Install Python Dependencies
-# Pre-install legacy Cython and Numpy (required for rasterio/pyproj build)
-# We disable build isolation to force usage of our pinned Cython
-RUN pip install "Cython<3" "numpy<2.0.0" wheel setuptools && \
-    sed -i '/GDAL/d' requirements.txt && \
-    pip install --no-cache-dir --no-build-isolation -r requirements.txt && \
-    pip install GDAL==$(gdal-config --version)
-
-# --- INSTALL LAStools (Required by Geoflow) ---
+# Clone and Build LAStools (lightweight enough to build from source)
 RUN git clone https://github.com/LAStools/LAStools.git /tmp/LAStools && \
     cd /tmp/LAStools && \
     mkdir build && cd build && \
@@ -60,28 +56,51 @@ RUN git clone https://github.com/LAStools/LAStools.git /tmp/LAStools && \
     make install && \
     cd / && rm -rf /tmp/LAStools
 
-# --- INSTALL GEOFLOW (Build from Source) ---
+# Build Val3dity (required for gfp-val3dity)
+RUN git clone https://github.com/tudelft3d/val3dity.git /tmp/val3dity && \
+    cd /tmp/val3dity && \
+    mkdir build && cd build && \
+    cmake .. \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr/local && \
+    make -j$(nproc) && \
+    make install && \
+    cd / && rm -rf /tmp/val3dity
+
 # Clone and Build Geoflow Bundle
+# We rely on Conda's CMAKE_PREFIX_PATH to find libs (Conda env is in /opt/conda)
 RUN git clone --recursive https://github.com/geoflow3d/geoflow-bundle.git /tmp/geoflow-bundle && \
     cd /tmp/geoflow-bundle && \
+    sed -i 's/# add_subdirectory(plugins\/gfp-las)/add_subdirectory(plugins\/gfp-las)/' CMakeLists.txt && \
+    sed -i 's/# add_subdirectory(plugins\/gfp-val3dity)/add_subdirectory(plugins\/gfp-val3dity)/' CMakeLists.txt && \
+    sed -i 's/.*cmake_minimum_required.*/cmake_minimum_required(VERSION 3.5)/' plugins/gfp-val3dity/thirdparty/val3dity/CMakeLists.txt && \
     mkdir build && cd build && \
     cmake .. \
         -DGF_BUILD_GUI=OFF \
         -DCMAKE_INSTALL_PREFIX=/usr/local \
-        -DCMAKE_BUILD_TYPE=Release && \
-    make && \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_PREFIX_PATH="/opt/conda;/usr/local" \
+        -DCMAKE_SHARED_LINKER_FLAGS="-L/opt/conda/lib -L/usr/local/lib" \
+        -DCMAKE_EXE_LINKER_FLAGS="-L/opt/conda/lib -L/usr/local/lib" && \
+    make -j$(nproc) && \
     make install && \
-    # Cleanup to keep image small
     cd / && rm -rf /tmp/geoflow-bundle
 
-# Copy Main Application Code
+# Install remaining Python dependencies
+COPY requirements.txt .
+
+# Remove binary deps that we already installed via Conda to prevent pip from recompiling/breaking them
+RUN sed -i '/GDAL/d' requirements.txt && \
+    sed -i '/rasterio/d' requirements.txt && \
+    sed -i '/fiona/d' requirements.txt && \
+    sed -i '/pyproj/d' requirements.txt && \
+    sed -i '/shapely/d' requirements.txt && \
+    sed -i '/numpy/d' requirements.txt && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copy Project Code
 COPY . .
 
-# Create 'output' directory for temp processing
-RUN mkdir -p output
-
-# Expose port (untuk API nanti)
-EXPOSE 8080
-
-# Command default: Jalankan API Web Service
-CMD ["uvicorn", "src.cloud.api:app", "--host", "0.0.0.0", "--port", "8080"]
+# Set entrypoint
+ENTRYPOINT ["python", "cli.py"]
+CMD ["--help"]

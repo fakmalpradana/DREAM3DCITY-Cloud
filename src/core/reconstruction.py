@@ -16,14 +16,23 @@ class ReconstructionManager:
         self.config_dir = config_dir
         self.config_dir = config_dir
         # Try to find geof
-        self.geof_cmd = os.getenv("GEOF_PATH", "geof")
-        if not shutil.which(self.geof_cmd):
-            # Fallback for common local installs
-            local_bin = os.path.abspath("geof")
-            if os.path.exists(local_bin):
-                self.geof_cmd = local_bin
+        env_path = os.getenv("GEOF_PATH")
+        if env_path and shutil.which(env_path):
+            self.geof_cmd = env_path
+        elif shutil.which("geof"):
+            self.geof_cmd = "geof"
+        else:
+            # Check local relative paths
+            local_win = os.path.abspath(os.path.join("Geoflow", "bin", "geof.exe"))
+            local_nix = os.path.abspath(os.path.join("Geoflow", "bin", "geof"))
+            
+            if os.path.exists(local_win):
+                self.geof_cmd = local_win
+            elif os.path.exists(local_nix):
+                self.geof_cmd = local_nix
             else:
-                 logger.warning(f"'geof' command not found in PATH or local directory. Ensure Geoflow is installed.")
+                self.geof_cmd = "geof" # Default to name
+                logger.warning(f"'geof' command not found in PATH (~/Geoflow/bin/geof). Ensure Geoflow is installed.")
 
     def validate_inputs(self, footprint: str, pointcloud: str, output_dir: str) -> bool:
         """Validates that input files and output directory exist."""
@@ -33,9 +42,14 @@ class ReconstructionManager:
         if not os.path.exists(pointcloud):
             logger.error(f"Point cloud file not found: {pointcloud}")
             return False
-        if not os.path.isdir(output_dir):
-            logger.error(f"Output directory not found: {output_dir}")
-            return False
+        
+        if not os.path.exists(output_dir):
+            try:
+                os.makedirs(output_dir, exist_ok=True)
+                logger.info(f"Created output directory: {output_dir}")
+            except OSError as e:
+                logger.error(f"Failed to create output directory {output_dir}: {e}")
+                return False
         return True
 
     def build_command(self, 

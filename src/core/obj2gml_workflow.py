@@ -90,7 +90,7 @@ class RunObj2GML:
             file_set = find_complete_sets(root_dir)
             
             # Create progress bar OUTSIDE the output capture context
-            pbar = tqdm(total=len(file_set), desc="⏳ Processing files", unit="file", 
+            pbar = tqdm(total=len(file_set), desc="Processing files", unit="file", 
                         position=0, leave=True, file=sys.__stdout__)
             
             # Capture all output to log file
@@ -115,7 +115,9 @@ class RunObj2GML:
                     obj_path = Path(obj)
 
                     rel_path = obj_path.relative_to(root_path)
-                    folder_name = rel_path.parts[0]
+                    # Correctly handle case where files are in root specific (avoid collision with filename)
+                    folder_name_raw = rel_path.parts[0]
+                    folder_name = os.path.splitext(folder_name_raw)[0]
                     
                     self.log_with_timestamp(f"Processing folder: {folder_name}")
                     self.log_with_timestamp(f"OBJ file: {obj}")
@@ -134,26 +136,33 @@ class RunObj2GML:
                     translate_dir = f"{root_dir}/{folder_name}/translated"
                     gml_dir = f"{root_dir}/{folder_name}/citygml"
                     
+                    # Helper to get command (exe or go run)
+                    def get_go_cmd(script_name, *args):
+                        exe_path = os.path.join(go_dir, f"{script_name}.exe")
+                        if os.path.exists(exe_path):
+                            return [exe_path, *args]
+                        return ["go", "run", f"{go_dir}/{script_name}.go", *args]
+
                     # Step 1: Pemisahan Bangunan
                     self.log_with_timestamp("STEP 1/6: Building separation", is_display=True)
-                    self.run_subprocess_with_capture([
-                        "go", "run", f"{go_dir}/objseparator.go", 
+                    self.run_subprocess_with_capture(
+                        get_go_cmd("objseparator", 
                         f"-cx={coord[0]}", f"-cy={coord[1]}",
                         f"{obj}", 
                         f"{bo}",
                         obj_dir
-                    ], "Building separation")
+                    ), "Building separation")
 
                     # Step 2: Translasi Objek Menuju Koordinat UTM
                     self.log_with_timestamp("STEP 2/6: Object translation", is_display=True)
-                    self.run_subprocess_with_capture([
-                        "go", "run", f"{go_dir}/translate.go", 
+                    self.run_subprocess_with_capture(
+                        get_go_cmd("translate", 
                         f"-input={obj_dir}", 
                         f"-output={translate_dir}", 
                         f"-tx={coord[0]}", 
                         f"-ty={coord[1]}",
                         "-tz=0"
-                    ], "Object translation to UTM coordinates")
+                    ), "Object translation to UTM coordinates")
 
                     # Step 3: Generate MTL
                     self.log_with_timestamp("STEP 3/6: MTL generation", is_display=True)
@@ -178,11 +187,11 @@ class RunObj2GML:
 
                     # Step 5: Convert OBJ ke CityGML lod2
                     self.log_with_timestamp("STEP 5/6: OBJ to CityGML conversion", is_display=True)
-                    self.run_subprocess_with_capture([
-                        "go", "run", f"{go_dir}/obj2lod2gml.go",
+                    self.run_subprocess_with_capture(
+                         get_go_cmd("obj2lod2gml",
                         "-input", translate_dir,
                         "-output", gml_dir
-                    ], "OBJ to CityGML LOD2 conversion")
+                    ), "OBJ to CityGML LOD2 conversion")
 
                     # Step 6: Merge keseluruhan CityGMl lod2 file menjadi 1 file
                     self.log_with_timestamp("STEP 6/6: CityGML file merging", is_display=True)

@@ -184,14 +184,37 @@ class BuildingColorizer:
                 data = json.load(f)
                 for feature in data['features']:
                     if feature['geometry']['type'] in ['MultiPolygon', 'Polygon']:
-                        coords = (feature['geometry']['coordinates'][0][0] 
-                                if feature['geometry']['type'] == 'MultiPolygon'
-                                else feature['geometry']['coordinates'][0])
+                        coords_raw = feature['geometry']['coordinates']
+                        
+                        # Validate coordinates structure
+                        if not coords_raw:
+                            continue
+                            
+                        # Handle MultiPolygon vs Polygon structure differences
                         try:
+                            if feature['geometry']['type'] == 'MultiPolygon':
+                                # Expecting [[[x,y],...]] structure
+                                if not coords_raw or not coords_raw[0] or not coords_raw[0][0]:
+                                    continue
+                                coords = coords_raw[0][0]
+                            else:
+                                # Expecting [[x,y],...] structure
+                                if not coords_raw or not coords_raw[0]:
+                                    continue
+                                coords = coords_raw[0]
+                                
+                            if len(coords) < 3: # Need at least 3 points for a polygon
+                                continue
+                                
                             polygon = Polygon(coords)
                             if polygon.is_valid:
                                 centroid = polygon.centroid
                                 building_outlines[f"{centroid.x}_{centroid.y}"] = polygon
+                        except (IndexError, ValueError) as e:
+                            # Silently skip invalid geometries to avoid log spam, or log debug only
+                            continue
+                        except Exception as e:
+                            print(f"Warning: Failed to process polygon: {str(e)}")
                         except Exception as e:
                             print(f"Invalid polygon: {str(e)}")
                             
