@@ -102,5 +102,8 @@ RUN sed -i '/GDAL/d' requirements.txt && \
 COPY . .
 
 # Set entrypoint
-ENTRYPOINT ["python", "cli.py"]
-CMD ["--help"]
+# Set entrypoint
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh
+ENTRYPOINT ["./entrypoint.sh"]
+CMD ["api"]

@@ -1,69 +1,82 @@
-# Deployment Guide for DREAM3DCITY
+# Deployment & Usage Guide for DREAM3DCITY
 
-This guide explains how to deploy the DREAM3DCITY API to Google Cloud Run.
+This guide explains how to deploy the DREAM3DCITY API to Google Cloud Run and how to use it once deployed.
 
-## Prerequisites
+## 1. The Deployment Script (`deploy_gcp.ps1`)
 
-1.  **Google Cloud CLI (gcloud)** installed and authenticated.
-2.  **Docker** installed (optional if using Cloud Build, but recommended for local testing).
-3.  A **Google Cloud Project** with billing enabled.
+The `deploy_gcp.ps1` script is an automated PowerShell tool designed to simplify the deployment process on Windows. Here is what it does, step-by-step:
 
-## 1. Setup Environment
+1.  **Load Configuration**: It reads your credentials (`PROJECT_ID`, `REGION`, `BUCKET_NAME`) from the `.env` file.
+2.  **Enable APIs**: It activates necessary Google Cloud services (Cloud Run, Artifact Registry, Cloud Build, Cloud Storage).
+3.  **Setup Repository**: It checks if the Docker repository (`dream3d-repo`) exists in Artifact Registry. If not, it creates it.
+4.  **Build & Push**: It zips your local source code and sends it to **Google Cloud Build**. The Docker image is built in the cloud (saving your local bandwidth/CPU) and stored in Artifact Registry.
+5.  **Deploy Service**: It deploys the Docker image to **Cloud Run**. It configures the service with:
+    *   **Public Access**: (`--allow-unauthenticated`) so you can access it easily.
+    *   **Resources**: 2 CPUs and 4GB RAM to handle 3D processing.
+    *   **Timeout**: 60 minutes (3600s) to allow for long-running jobs.
+    *   **Bucket**: Connects it to your specified Cloud Storage bucket.
 
-Open your terminal (PowerShell or Bash) and login to verify:
+## 2. Usage Guide (Post-Deployment)
 
-```bash
-gcloud auth login
-gcloud config set project [YOUR_PROJECT_ID]
+Once the script completes, it will output a **Service URL** (e.g., `https://dream3d-service-xyz.a.run.app`).
+
+### A. Accessing the Interface (Swagger UI)
+
+The easiest way to test the API is via the interactive documentation.
+1.  Open your browser.
+2.  Navigate to: `[YOUR_SERVICE_URL]/docs`
+3.  You will see the **Swagger UI** where you can manually upload files and test endpoints.
+
+### B. API Endpoints
+
+The API is asynchronous. You submit a job, get an ID, and check its status later.
+
+#### 1. Submit Reconstruction Job
+**Endpoint**: `POST /reconstruct`
+**Input**: A **ZIP file** containing:
+*   1 Building Footprint file (`.gpkg` or `.shp` + sidecars)
+*   1 Point Cloud file (`.las` or `.laz`)
+
+**Response**:
+```json
+{
+  "job_id": "uuid-string",
+  "status": "QUEUED",
+  "message": "Job queued for processing"
+}
 ```
 
-## 2. Deploy using Script
+#### 2. Submit OBJ2GML Job
+**Endpoint**: `POST /obj2gml`
+**Input**: A **ZIP file** containing your OBJ files and metadata folder structure.
+**Response**: Similar to reconstruction (Job ID).
 
-We have provided a script `deploy_gcp.sh` (or `deploy_gcp.ps1` equivalent instructions) to automate the process.
-
-**Run the script:**
-
-```bash
-# Usage: ./deploy_gcp.sh [PROJECT_ID] [REGION]
-./deploy_gcp.sh my-dream3d-project asia-southeast2
+#### 3. Check Job Status
+**Endpoint**: `GET /jobs/{job_id}`
+**Response**:
+```json
+{
+  "job_id": "uuid-string",
+  "status": "COMPLETED",  // or PROCESSING, FAILED
+  "message": "Process finished successfully.",
+  "download_url": "https://storage.googleapis.com/..." // Valid for 1 hour
+}
 ```
 
-**What the script does:**
-1.  Enables necessary Google Cloud APIs (Cloud Run, Artifact Registry, Cloud Build).
-2.  Creates a Docker repository in Artifact Registry (if not exists).
-3.  Builds the Docker image using Cloud Build (so you don't need to upload the huge image manually).
-4.  Deploys the image to Cloud Run.
+### C. Example Workflow (cURL)
 
-## 3. Manual Deployment Steps
-
-If you prefer to run commands manually:
-
+**1. Submit Job**
 ```bash
-# Variables
-export PROJECT_ID="your-project-id"
-export REGION="asia-southeast2"
-export REPO="dream3d-repo"
-export IMAGE="dream3d-api"
-
-# 1. Create Repository
-gcloud artifacts repositories create $REPO --repository-format=docker --location=$REGION
-
-# 2. Build & Push (Cloud Build)
-gcloud builds submit --tag "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:latest"
-
-# 3. Deploy
-gcloud run deploy dream3d-service \
-  --image "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO/$IMAGE:latest" \
-  --platform managed \
-  --region $REGION \
-  --allow-unauthenticated \
-  --memory 4Gi \
-  --cpu 2
+curl -X POST "https://your-service-url/reconstruct" \
+     -F "file=@./my_data.zip"
+# Returns: {"job_id": "12345..."}
 ```
 
-## 4. Testing the Production API
+**2. Poll Status**
+```bash
+curl "https://your-service-url/jobs/12345..."
+# Returns: {"status": "PROCESSING", ...}
+```
 
-Once deployed, you will get a URL (e.g., `https://dream3d-service-xyz.a.run.app`).
-
-- **API Docs**: Visit `https://dream3d-service-xyz.a.run.app/docs` to see the Swagger UI.
-- **Reconstruct**: Use the `/reconstruct` endpoint (Note: Processing large files via HTTP might timeout; for production, consider using Cloud Storage triggers).
+**3. Download Result**
+Once status is `COMPLETED`, open the `download_url` in your browser to get the processed ZIP file.
