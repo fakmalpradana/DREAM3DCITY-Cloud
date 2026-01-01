@@ -24,6 +24,7 @@ tqdm
 urllib3
 virtualenv
 zstandard
+scipy
 # Cloud & API dependencies
 fastapi
 uvicorn

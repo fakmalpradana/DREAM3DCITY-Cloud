@@ -138,9 +138,14 @@ class RunObj2GML:
                     
                     # Helper to get command (exe or go run)
                     def get_go_cmd(script_name, *args):
-                        exe_path = os.path.join(go_dir, f"{script_name}.exe")
-                        if os.path.exists(exe_path):
-                            return [exe_path, *args]
+                        # On Windows, prefer .exe if it exists
+                        if os.name == 'nt':
+                            exe_path = os.path.join(go_dir, f"{script_name}.exe")
+                            if os.path.exists(exe_path):
+                                return [exe_path, *args]
+                        
+                        # On Linux (Docker) or if exe missing, use go run
+                        # Note: 'go' must be in PATH. In Docker it is.
                         return ["go", "run", f"{go_dir}/{script_name}.go", *args]
 
                     # Step 1: Pemisahan Bangunan
