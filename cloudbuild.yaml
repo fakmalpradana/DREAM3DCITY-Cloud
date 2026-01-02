@@ -1,0 +1,42 @@
+steps:
+  # 1. Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/dream3d-api:latest', '.']
+
+  # 2. Push the Docker image to Artifact Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/dream3d-api:latest']
+
+  # 3. Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - '${_SERVICE_NAME}'
+      - '--image'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/dream3d-api:latest'
+      - '--region'
+      - '${_REGION}'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--memory'
+      - '4Gi'
+      - '--cpu'
+      - '2'
+      - '--timeout'
+      - '3600'
+      - '--no-cpu-throttling' # Critical for background tasks
+      - '--set-env-vars'
+      - 'GCP_BUCKET_NAME=${_BUCKET_NAME}'
+
+# Substitutions allow you to change these values in the Cloud Build Trigger settings
+substitutions:
+  _REGION: 'asia-southeast2'
+  _REPO_NAME: 'dream3d-repo'
+  _SERVICE_NAME: 'dream3d-service'
+  _BUCKET_NAME: 'dream3d-data-storage' # Update if your bucket name is dynamic
+
+images:
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO_NAME}/dream3d-api:latest'
