@@ -66,10 +66,39 @@ chmod +x deploy_gcp.sh
 3.  Checks/Creates an **Artifact Registry** repository.
 4.  Builds the Docker image using **Cloud Build**.
 5.  Deploys the service to **Cloud Run** (Public access, 2 vCPU, 4GB RAM).
+    *   **Bucket**: Connects it to your specified Cloud Storage bucket.
 
 ---
 
-## 4. API Usage Guide
+## 4. CI/CD Setup (Automated Deployment)
+
+To automate deployment (so changes deploy when you `git push`), follow these steps:
+
+### Step 1: Push to Git
+Push your code (including the new `cloudbuild.yaml` file) to a repository (GitHub, Bitbucket, or Cloud Source Repositories).
+
+### Step 2: Create Build Trigger in GCP
+1.  Go to the **Google Cloud Console** -> **Cloud Build** -> **Triggers**.
+2.  Click **Create Trigger**.
+3.  **Source**: Select your repository and branch (e.g., `main`).
+4.  **Configuration**: Select **Cloud Build configuration file (yaml/json)**.
+5.  **Location**: Ensure it points to `cloudbuild.yaml`.
+6.  **Substitutions** (Optional): If you want to override defaults without changing the code, add variables like `_REGION` or `_BUCKET_NAME` here.
+7.  Click **Create**.
+
+Now, every time you push to your selected branch, Cloud Build will automatically:
+1.  Build the new Docker image.
+2.  Push it to Artifact Registry.
+3.  Deploy the new version to Cloud Run.
+
+### Note on Secrets (`.env`)
+It is **correct and safe** to add `.env` to `.gitignore`. Cloud Build **does not** read your local `.env` file. Instead, it uses the variables defined in `cloudbuild.yaml`.
+
+If you need to change these values for the automated build (e.g., different bucket name), do not edit the file. Instead, set them in the **Trigger Settings** under **Substitution variables** (e.g., `_BUCKET_NAME` = `my-prod-bucket`).
+
+---
+
+## 5. API Usage Guide
 
 Once deployed, you will receive a **Service URL** (e.g., `https://dream3d-service-xyz.a.run.app`).
 
