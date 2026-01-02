@@ -44,12 +44,27 @@ if ($LASTEXITCODE -ne 0) {
 } else {
     Write-Host "Repository '$REPO_NAME' already exists."
 }
+# 4. Check/Create Cloud Storage Bucket
+Write-Host "[3/4] Checking Cloud Storage Bucket..." -ForegroundColor Yellow
+$BUCKET_NAME = if ($env:BUCKET_NAME) { $env:BUCKET_NAME } else { "dream3d-data-$PROJECT_ID" }
 
-# 4. Build & Push Image
+$bucketExists = cmd /c "gcloud storage buckets describe gs://$BUCKET_NAME --project=$PROJECT_ID 2>&1"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Creating bucket '$BUCKET_NAME'..."
+    cmd /c "gcloud storage buckets create gs://$BUCKET_NAME --project=$PROJECT_ID --location=$REGION --uniform-bucket-level-access"
+} else {
+    Write-Host "Bucket '$BUCKET_NAME' already exists."
+}
+
+# Make Bucket Public (Quick Fix for access without signed URLs)
+Write-Host "Ensuring bucket is public..."
+cmd /c "gcloud storage buckets add-iam-policy-binding gs://$BUCKET_NAME --member=allUsers --role=roles/storage.objectViewer --project=$PROJECT_ID 2>&1"
+
+# 5. Build & Push Image
 $IMAGE_TAG = "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME`:@latest"
 $IMAGE_TAG_PURE = "$REGION-docker.pkg.dev/$PROJECT_ID/$REPO_NAME/$IMAGE_NAME`:latest"
 
-Write-Host "[3/4] Building and Pushing Docker Image to: $IMAGE_TAG_PURE" -ForegroundColor Yellow
+Write-Host "[4/5] Building and Pushing Docker Image to: $IMAGE_TAG_PURE" -ForegroundColor Yellow
 # Note: PowerShell parsing of specific chars in gcloud args can be tricky, using cmd /c for robust gcloud execution
 cmd /c "gcloud builds submit --tag $IMAGE_TAG_PURE --project $PROJECT_ID"
 
@@ -58,15 +73,15 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# 5. Deploy to Cloud Run
-Write-Host "[4/4] Deploying to Cloud Run..." -ForegroundColor Yellow
+# 6. Deploy to Cloud Run
+Write-Host "[5/5] Deploying to Cloud Run..." -ForegroundColor Yellow
 # Note: For long running jobs, Cloud Run Jobs is better, but user asked for Service-like deployment in script.
 # We will use 'gcloud run deploy' as requested.
 # Increase timeout to max (60m) for heavy processing if needed.
 
 $BUCKET_NAME = if ($env:BUCKET_NAME) { $env:BUCKET_NAME } else { "dream3d-data-$PROJECT_ID" }
 
-cmd /c "gcloud run deploy $SERVICE_NAME --image $IMAGE_TAG_PURE --platform managed --region $REGION --allow-unauthenticated --memory 4Gi --cpu 2 --timeout=3600 --project $PROJECT_ID --set-env-vars GCP_BUCKET_NAME=$BUCKET_NAME"
+cmd /c "gcloud run deploy $SERVICE_NAME --image $IMAGE_TAG_PURE --platform managed --region $REGION --allow-unauthenticated --memory 4Gi --cpu 2 --timeout=3600 --project $PROJECT_ID --no-cpu-throttling --set-env-vars GCP_BUCKET_NAME=$BUCKET_NAME"
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Error: Deployment failed." -ForegroundColor Red

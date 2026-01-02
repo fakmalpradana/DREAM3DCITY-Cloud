@@ -58,14 +58,21 @@ def smart_detect_files(extract_dir: str, mode: str):
     
     if mode == 'reconstruct':
         for root, dirs, files in os.walk(extract_dir):
+            # Skip hidden directories like __MACOSX
+            dirs[:] = [d for d in dirs if not d.startswith('.') and not d.startswith('__')]
+            
             for f in files:
+                if f.startswith('.'): continue # Skip hidden files like ._test.gpkg
+
                 if f.lower().endswith(('.gpkg', '.shp')):
                     if found_files["footprint"]:
-                         raise Exception("Multiple footprint files found! Please provide only one.")
+                         print(f"Warning: Multiple footprints found. Keeping {found_files['footprint']}, ignoring {f}")
+                         continue
                     found_files["footprint"] = os.path.join(root, f)
                 elif f.lower().endswith(('.las', '.laz')):
                     if found_files["pointcloud"]:
-                         raise Exception("Multiple point cloud files found! Please provide only one.")
+                         print(f"Warning: Multiple point clouds found. Keeping {found_files['pointcloud']}, ignoring {f}")
+                         continue
                     found_files["pointcloud"] = os.path.join(root, f)
         
         if not found_files["footprint"]:
@@ -93,9 +100,9 @@ def upload_folder_to_gcs(local_folder: str, destination_blob_prefix: str):
     
     blob.upload_from_filename(zip_path)
     
-    # Generate Signed URL (valid for 1 hour)
-    url = blob.generate_signed_url(expiration=3600, method='GET')
-    return url
+    # Use Public URL (Requires bucket to be public)
+    # This is a quick fix to avoid managing Service Account Keys for signing
+    return blob.public_url
 
 # --- Background Processor ---
 

@@ -3,14 +3,22 @@
 # Dream3D City GCP Deployment Script
 # Usage: ./deploy_gcp.sh [PROJECT_ID] [REGION]
 
-PROJECT_ID=$1
-REGION=${2:-asia-southeast2}
-REPO_NAME="dream3d-repo"
+# Load Environment Variables from .env if present
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+fi
+
+PROJECT_ID=${PROJECT_ID:-$1}
+REGION=${REGION:-$2}
+REGION=${REGION:-asia-southeast2}
+REPO_NAME=${REPO_NAME:-dream3d-repo}
+SERVICE_NAME=${SERVICE_NAME:-dream3d-service}
+BUCKET_NAME=${BUCKET_NAME:-dream3d-data-$PROJECT_ID}
 IMAGE_NAME="dream3d-api"
 
 if [ -z "$PROJECT_ID" ]; then
     echo "Usage: ./deploy_gcp.sh [PROJECT_ID] [REGION]"
-    echo "Please provide your Google Cloud Project ID."
+    echo "Or ensure PROJECT_ID is set in .env file."
     exit 1
 fi
 
@@ -53,7 +61,9 @@ gcloud run deploy $SERVICE_NAME \
     --memory 4Gi \
     --cpu 2 \
     --project "$PROJECT_ID" \
-    --set-env-vars GCP_BUCKET_NAME="dream3d-data-$PROJECT_ID" # Assumption: Bucket created manually or follows pattern
+    --timeout=3600 \
+    --no-cpu-throttling \
+    --set-env-vars GCP_BUCKET_NAME="$BUCKET_NAME"
 
 echo "=================================================="
 echo "DEPLOYMENT COMPLETE!"

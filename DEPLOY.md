@@ -1,82 +1,107 @@
-# Deployment & Usage Guide for DREAM3DCITY
+# DREAM3DCITY Deployment & Usage Documentation
 
-This guide explains how to deploy the DREAM3DCITY API to Google Cloud Run and how to use it once deployed.
+This document enables you to deploy the **DREAM3DCITY** 3D reconstruction and conversion engine to Google Cloud Platform (GCP).
 
-## 1. The Deployment Script (`deploy_gcp.ps1`)
+---
 
-The `deploy_gcp.ps1` script is an automated PowerShell tool designed to simplify the deployment process on Windows. Here is what it does, step-by-step:
+## 1. Technology Stack
 
-1.  **Load Configuration**: It reads your credentials (`PROJECT_ID`, `REGION`, `BUCKET_NAME`) from the `.env` file.
-2.  **Enable APIs**: It activates necessary Google Cloud services (Cloud Run, Artifact Registry, Cloud Build, Cloud Storage).
-3.  **Setup Repository**: It checks if the Docker repository (`dream3d-repo`) exists in Artifact Registry. If not, it creates it.
-4.  **Build & Push**: It zips your local source code and sends it to **Google Cloud Build**. The Docker image is built in the cloud (saving your local bandwidth/CPU) and stored in Artifact Registry.
-5.  **Deploy Service**: It deploys the Docker image to **Cloud Run**. It configures the service with:
-    *   **Public Access**: (`--allow-unauthenticated`) so you can access it easily.
-    *   **Resources**: 2 CPUs and 4GB RAM to handle 3D processing.
-    *   **Timeout**: 60 minutes (3600s) to allow for long-running jobs.
-    *   **Bucket**: Connects it to your specified Cloud Storage bucket.
+This application utilizes a modern, cloud-native stack designed for high-performance geospatial processing:
 
-## 2. Usage Guide (Post-Deployment)
+*   **Language**: Python 3.10 (API & Orchestration)
+*   **Web Framework**: FastAPI with Uvicorn (Asynchronous Server)
+*   **Containerization**: Docker (Multi-stage build)
+*   **3D Processing Engine**:
+    *   **Geoflow**: C++ based engine for 3D city reconstruction (compiled from source).
+    *   **LAStools**: Efficient LiDAR processing.
+    *   **Val3dity**: Geometry validation tools.
+*   **CLI Tools**: Go (Golang) compiled binaries for `obj2gml` conversion.
+*   **Cloud Platform (GCP)**:
+    *   **Cloud Run**: Serverless container execution (Auto-scaling).
+    *   **Cloud Build**: CI/CD for building Docker images.
+    *   **Artifact Registry**: Secure Docker image storage.
+    *   **Cloud Storage**: Object storage for input/output data.
 
-Once the script completes, it will output a **Service URL** (e.g., `https://dream3d-service-xyz.a.run.app`).
+---
 
-### A. Accessing the Interface (Swagger UI)
+## 2. Prerequisites
 
-The easiest way to test the API is via the interactive documentation.
-1.  Open your browser.
-2.  Navigate to: `[YOUR_SERVICE_URL]/docs`
-3.  You will see the **Swagger UI** where you can manually upload files and test endpoints.
+Before starting, ensure you have:
 
-### B. API Endpoints
+1.  **Google Cloud Platform Account**: Active account with billing enabled.
+2.  **Google Cloud SDK**: Installed and authenticated (`gcloud auth login`).
+3.  **Project ID**: A created GCP project (e.g., `dream3d-482717`).
 
-The API is asynchronous. You submit a job, get an ID, and check its status later.
+---
 
-#### 1. Submit Reconstruction Job
-**Endpoint**: `POST /reconstruct`
-**Input**: A **ZIP file** containing:
-*   1 Building Footprint file (`.gpkg` or `.shp` + sidecars)
-*   1 Point Cloud file (`.las` or `.laz`)
+## 3. Deployment Steps
 
-**Response**:
-```json
-{
-  "job_id": "uuid-string",
-  "status": "QUEUED",
-  "message": "Job queued for processing"
-}
+We have provided automated scripts for both Windows and Linux/Cloud Shell users.
+
+### Step 1: Configure Environment
+Create a file named `.env` in the project root with your details:
+
+```ini
+PROJECT_ID=your-project-id-here
+REGION=asia-southeast2
+BUCKET_NAME=dream3d-data-storage
 ```
 
-#### 2. Submit OBJ2GML Job
-**Endpoint**: `POST /obj2gml`
-**Input**: A **ZIP file** containing your OBJ files and metadata folder structure.
-**Response**: Similar to reconstruction (Job ID).
+### Step 2: Run Deployment Script
 
-#### 3. Check Job Status
-**Endpoint**: `GET /jobs/{job_id}`
-**Response**:
-```json
-{
-  "job_id": "uuid-string",
-  "status": "COMPLETED",  // or PROCESSING, FAILED
-  "message": "Process finished successfully.",
-  "download_url": "https://storage.googleapis.com/..." // Valid for 1 hour
-}
+**For Windows (PowerShell):**
+```powershell
+.\deploy_gcp.ps1
 ```
 
-### C. Example Workflow (cURL)
-
-**1. Submit Job**
+**For Linux / Google Cloud Shell:**
 ```bash
-curl -X POST "https://your-service-url/reconstruct" \
-     -F "file=@./my_data.zip"
-# Returns: {"job_id": "12345..."}
+chmod +x deploy_gcp.sh
+./deploy_gcp.sh
 ```
 
-**2. Poll Status**
-```bash
-curl "https://your-service-url/jobs/12345..."
-# Returns: {"status": "PROCESSING", ...}
-```
+**What the script does:**
+1.  Enables required Google Cloud APIs.
+2.  Checks/Creates a **Cloud Storage Bucket** for data.
+3.  Checks/Creates an **Artifact Registry** repository.
+4.  Builds the Docker image using **Cloud Build**.
+5.  Deploys the service to **Cloud Run** (Public access, 2 vCPU, 4GB RAM).
 
-**3. Download Result**
-Once status is `COMPLETED`, open the `download_url` in your browser to get the processed ZIP file.
+---
+
+## 4. API Usage Guide
+
+Once deployed, you will receive a **Service URL** (e.g., `https://dream3d-service-xyz.a.run.app`).
+
+### A. Interactive Documentation (Swagger UI)
+Visit `[YOUR_SERVICE_URL]/docs` to see the interactive API test page.
+
+### B. Endpoints
+
+#### 1. Reconstruct 3D Model (`POST /reconstruct`)
+Converts 2D Footprints + LiDAR Point Cloud into a 3D Model.
+
+*   **Input**: A ZIP file containing:
+    *   1 Footprint file (`.gpkg` or `.shp`)
+    *   1 Pointcloud file (`.las` or `.laz`)
+*   **Returns**: `job_id`
+
+#### 2. Convert OBJ to GML (`POST /obj2gml`)
+Converts standard 3D OBJ files into CityGML format.
+
+*   **Input**: A ZIP file containing your OBJ files and metadata.
+*   **Returns**: `job_id`
+
+#### 3. Check Status (`GET /jobs/{job_id}`)
+Poll this endpoint to check progress.
+
+*   **Status**: `QUEUED` -> `PROCESSING` -> `COMPLETED` (or `FAILED`)
+*   **Result**: When `COMPLETED`, returns a `download_url` to your files.
+
+---
+
+## 5. Troubleshooting
+
+*   **"Bucket does not exist"**: Re-run the deployment script to ensure the bucket creation step executes.
+*   **"Processing hangs"**: Ensure the `--no-cpu-throttling` flag was used during deployment (the provided scripts include this).
+*   **"Multiple files found"**: Ensure your ZIP file contains exactly one footprint and one pointcloud file. Hidden system files are now automatically ignored.
