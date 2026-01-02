@@ -91,6 +91,13 @@ Now, every time you push to your selected branch, Cloud Build will automatically
 2.  Push it to Artifact Registry.
 3.  Deploy the new version to Cloud Run.
 
+### Troubleshooting: "I am only a Contributor"
+If you do not have Admin rights to the GitHub repository, you cannot install the Cloud Build app.
+**Solution**:
+1.  **Fork** the repository to your own personal GitHub account.
+2.  Connect Cloud Build to **your forked repository** instead.
+3.  Push changes to your fork to trigger the deployment.
+
 ### Note on Secrets (`.env`)
 It is **correct and safe** to add `.env` to `.gitignore`. Cloud Build **does not** read your local `.env` file. Instead, it uses the variables defined in `cloudbuild.yaml`.
 
